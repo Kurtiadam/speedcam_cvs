@@ -6,7 +6,7 @@ This repository is for student work at the Budapest University of Technology and
 
 
 Throughout the semester we will develop a speed camera algorithm consisting of the following features:
-- [ ] Vehicle detection with YOLO
+- [x] Vehicle detection with YOLO
 - [ ] License plate localization
 - [ ] License plate reading with optical character recognition (OCR)
 - [ ] Vehicle speed measuring using optical flow
