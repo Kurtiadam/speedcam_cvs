@@ -3,13 +3,12 @@ import cv2
 import numpy as np
 
 model = YOLO(r'C:\Users\Adam\Desktop\best_10000_s.pt')
-cap = cv2.VideoCapture('Desktop\highway_footage.mp4')
+cap = cv2.VideoCapture('samples\highway_footage.mp4')
 
 while(cap.isOpened()):
     ret, frame = cap.read()
     inph, inpw = frame.shape[:2]
     frame_ds = cv2.resize(frame, [int(inpw/4),int(inph/4)])
-    print([int(inpw/4),int(inph/4)])
     results = model(frame_ds, stream=True)
     for result in results:
         boxes = result.boxes
