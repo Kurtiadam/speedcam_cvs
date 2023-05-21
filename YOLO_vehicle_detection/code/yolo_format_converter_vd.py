@@ -3,6 +3,8 @@ import imageio.v2 as imageio
 import os
 import shutil
 
+# NAVIGATE TO THE LOCATION OF THE CSV FILE AND IMAGES BEFORE RUNNING THE SCRIPT
+
 ground_truth = pd.read_csv(r"gt_train.csv",header=None,dtype={0: str})
 
 first_column = ground_truth.iloc[:, 0]
@@ -52,10 +54,10 @@ def write_label(set, index, mode,idx,img_path):
     img = imageio.imread(img_path)
     img_height = img.shape[0]
     if img_height != 480:
-        return
+        return True
     img_width = img.shape[1]
     if img_width != 720:
-        return
+        return True
 
     class_name = ground_truth.iloc[idx,1]
     x_min = ground_truth.iloc[idx,2]
@@ -84,28 +86,32 @@ def write_label(set, index, mode,idx,img_path):
         with open(labels_folder + "\\" + set + "\\" +str(index) + '.txt', 'w') as f:
             f.write(txt_data)
     shutil.copyfile(img_path, images_folder + "\\" + set +  "\\" + str(index) + ".jpg")
-
+    return False
 
 def make_set(set, size, start):
     cnt = 0
+    skip_cnt = 0
+    print("Set: " + set)
     os.chdir(labels_folder)
     os.mkdir(set)
     os.chdir(images_folder)
     os.mkdir(set)
-    print(start)
     img_path = start_path + "\\" + "images_og\\train" + "\\" + str(first_column[start]) + ".jpg"
     prev_index = 10000000
     
     for idx, file_name in enumerate(first_column[start:]):
         if file_name == prev_index:
-            write_label(set,index=ground_truth.iloc[start + idx,0],mode="add",idx=start+idx, img_path=img_path)
+            skip = write_label(set,index=ground_truth.iloc[start + idx,0],mode="add",idx=start+idx, img_path=img_path)
         else:
             img_path = start_path + "\\" + "images_og\\train" + "\\" + str(ground_truth.iloc[start + idx,0]) + ".jpg"
-            write_label(set,index=ground_truth.iloc[start + idx,0],mode="new",idx=start+idx, img_path=img_path)
+            skip = write_label(set,index=ground_truth.iloc[start + idx,0],mode="new",idx=start+idx, img_path=img_path)
         prev_index = file_name
         if not (img_path == start_path + "\\" + "images_og\\train" + "\\" + str(ground_truth.iloc[start + idx + 1,0]) + ".jpg"):
             cnt += 1
-            if size == cnt:
+            if skip:
+                skip_cnt += 1
+            print(cnt - skip_cnt)
+            if size == (cnt - skip_cnt):
                 return idx
 
 
