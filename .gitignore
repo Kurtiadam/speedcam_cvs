@@ -166,3 +166,6 @@ datasets/
 
 # YOLO original directory
 /yolov5
+
+# Long example videos
+/samples/Videok
