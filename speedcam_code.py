@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 import math
 import time
-from sort.sort import *
+from sort import *
 from matplotlib import pyplot as plt
 
 
@@ -73,7 +73,6 @@ def main():
                         bbox_arr_lp = np.array([x1_lp,y1_lp,x2_lp,y2_lp,conf])
                         vehicle_preds[idx]['lp_pred'] = bbox_arr_lp
                 cropped_lp = cropped_vehicle[y1_lp:y2_lp,x1_lp:x2_lp]
-            
             # vehicle_preds[idx]['cropped_vehicle'] = frame_ds[bboxes_int[1]:bboxes_int[3],bboxes_int[0]:bboxes_int[2]]
 
             # Draw travelled track lines
