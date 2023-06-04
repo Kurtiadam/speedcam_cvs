@@ -7,7 +7,6 @@ from sort import *
 import os
 import sys
 import tesserocr
-import re
 from PIL import Image
 api = tesserocr.PyTessBaseAPI()
 
