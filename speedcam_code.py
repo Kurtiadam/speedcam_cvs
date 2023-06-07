@@ -8,6 +8,7 @@ import os
 import sys
 import tesserocr
 from PIL import Image
+import matplotlib.pyplot as plt
 api = tesserocr.PyTessBaseAPI()
 
 
@@ -24,6 +25,7 @@ class TrafficSpeedCamera:
         self.input_mode = input_mode
         self.input_path = input_path
         self.last_frame_time = time.time()
+        self.distance_setup_ran = False
 
     def process_frame(self, frame, show_tracking):
         show_frame = frame.copy()
@@ -31,17 +33,24 @@ class TrafficSpeedCamera:
         tracked_vehicles = self.object_tracker.track_objects(show_frame, vehicle_detections, show_tracking)
         if len(vehicle_detections) != 0:
             license_plates = self.license_plate_detector.detect_license_plates(frame, show_frame, tracked_vehicles)
-        # speeds = self.speed_estimator.estimate_speed(frame, tracked_vehicles)
+        speeds = self.speed_estimator.estimate_speed(frame, tracked_vehicles)
         self.measure_fps(show_frame)
         cv2.imshow("Frame", show_frame)
 
-    def run(self, show_tracking, ret = True):
+    def run(self, show_tracking, distance_setup, ret = True):
         print("START HERE")
         if self.input_mode == "burst_photos":
             file_names = sorted(os.listdir(self.input_path))
             for file_name in file_names:
                 image_path = os.path.join(self.input_path, file_name)
                 frame = cv2.imread(image_path)
+                if not self.distance_setup_ran:
+                    clicks = []
+                    fig, ax = plt.subplots(figsize=(16, 9))
+                    ax.imshow(frame)
+                    cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame, clicks, cid, fig))
+                    plt.show()
+                    self.distance_setup_ran = True
                 self.process_frame(frame, show_tracking)
                 self.io_handler.check_end_stream(ret)
             ret = False
@@ -51,6 +60,13 @@ class TrafficSpeedCamera:
         elif self.input_mode == "video":
             while True:
                 ret, frame = self.io_handler.cap.read()
+                if not self.distance_setup_ran:
+                    clicks = []
+                    fig, ax = plt.subplots(figsize=(16, 9))
+                    ax.imshow(frame)
+                    cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame, clicks, cid, fig))
+                    plt.show()
+                    self.distance_setup_ran = True
                 self.process_frame(frame)
                 cv2.imshow("Frame", frame)
                 self.io_handler.check_end_stream(ret)
@@ -309,14 +325,41 @@ class OCR():
 class SpeedEstimator:
     def __init__(self):
         # (1146x894) bottom left lane piece - (1470,358) upper right lane piece
-        self.ref_points = np.array([[1470,358],[1146,894]])
-        self.dist_in_meters = 1+1.75+1+1.75+1
-        self.dist_in_pixels = math.sqrt(self.ref_points[0][0]-self.ref_points[1][0])**2+(self.ref_points[0][1]-self.ref_points[1][1])**2
-        self.pixel_meter_ratio = self.dist_in_pixels/self.dist_in_meters
-        self.time_per_frame = 0.1
+        self.dist_in_meters = 0.0
+        self.dist_in_pixels = 0.0
+        self.pixel_meter_ratio = 0.0
+        self.time_per_frame = 0.18
+        self.moving_average_size = 3
 
     def estimate_speed(self, frame, tracked_objects):
-        pass
+        for idx in tracked_objects.keys():
+            total = 0
+            num_frames = min(self.moving_average_size, len(tracked_objects[idx]['vd_center']))
+            if num_frames >= 2:
+                for i in range(num_frames-1):
+                    travelled_distance_pixels = np.linalg.norm(np.array(tracked_objects[idx]['vd_center'][i+1]) - np.array(tracked_objects[idx]['vd_center'][i]))
+                    total += travelled_distance_pixels
+                travelled_distance_meters = total / self.pixel_meter_ratio
+                speed = travelled_distance_meters / (self.time_per_frame*(num_frames-1))
+                tracked_objects[idx]['speed'] = speed*3.6
+            print('IDX',idx, 'EST SPEED', tracked_objects[idx]['speed'], "km/h")
+        return tracked_objects
+    
+    def setup_distance(self, event, frame, clicks, cid, fig):
+        if event.xdata is not None and event.ydata is not None:
+            clicks.append((event.xdata, event.ydata))
+            if len(clicks) == 2:
+                p1, p2 = clicks
+                self.dist_in_pixels = np.linalg.norm(np.array(p1) - np.array(p2))
+                fig.canvas.mpl_disconnect(cid)
+                plt.imshow(frame)
+                plt.scatter(*zip(*clicks), color='red', marker='x')
+                plt.show()
+                dist_in_meters = input("\nHow many meters is this in reality?")
+                self.dist_in_meters = float(dist_in_meters)
+                self.pixel_meter_ratio = self.dist_in_pixels/self.dist_in_meters
+                print(f"Pixel per meter conversion ratio is: {self.pixel_meter_ratio}" + " pixels/meter")
+
 
 class IOHandler:
     def __init__(self, input_path):
@@ -333,7 +376,7 @@ class IOHandler:
 
 def main():
     speed_camera = TrafficSpeedCamera(r"C:\Users\Adam\Desktop\speedcam_samples\06.03\FAST_2", "burst_photos")
-    speed_camera.run(show_tracking = True)
+    speed_camera.run(show_tracking = True, distance_setup = True)
 
 
 if __name__ == '__main__':
