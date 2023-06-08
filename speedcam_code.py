@@ -47,6 +47,7 @@ class TrafficSpeedCamera:
                 self.iter += 1
                 image_path = os.path.join(self.input_path, file_name)
                 frame = cv2.imread(image_path)
+                # frame = cv2.resize(frame, [1280, 720])
                 if distance_setup and not self.distance_setup_ran:
                     clicks = []
                     fig, ax = plt.subplots(figsize=(16, 9))
@@ -348,8 +349,8 @@ class SpeedEstimator:
     
     def estimate_speed(self, frame, tracked_objects, iter):
         # tracked_objects = self.measure_distance(tracked_objects_wo_dist)
-        cv2.line(frame, (frame.shape[1], int(self.clicks[0][1])), (0, int(self.clicks[0][1])), (255,0,255), thickness=2)
-        cv2.line(frame, (frame.shape[1], int(self.clicks[1][1])), (0, int(self.clicks[1][1])), (255,0,255), thickness=2)
+        cv2.line(frame, (frame.shape[1], int(self.clicks[0][1])), (0, int(self.clicks[0][1])), (0,0,255), thickness=2)
+        cv2.line(frame, (frame.shape[1], int(self.clicks[1][1])), (0, int(self.clicks[1][1])), (0,0,255), thickness=2)
         for idx in tracked_objects.keys():
             if len(tracked_objects[idx]['vd_center']) >= 2:
                 box_diff = tracked_objects[idx]['vd_center'][-2][1] - tracked_objects[idx]['vd_center'][-1][1]
@@ -369,7 +370,7 @@ class SpeedEstimator:
                         speed_in_frames = np.abs(tracked_objects[idx]['entering_time']-tracked_objects[idx]['leaving_time'])
                         speed = (self.dist_in_meters/((1/self.fps)*speed_in_frames))*3.6
                         tracked_objects[idx]['speed'] = speed
-                        cv2.putText(frame, str(int(speed)) + " km/h", (tracked_objects[idx]['vd_bbox_coords'][2],tracked_objects[idx]['vd_bbox_coords'][3]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        cv2.putText(frame, str(int(speed)) + " km/h", (tracked_objects[idx]['vd_bbox_coords'][2],tracked_objects[idx]['vd_bbox_coords'][3]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
                 
                 if tracked_objects[idx]['tracked'] and tracked_objects[idx]['direction'] == "down":
                     if tracked_objects[idx]['leaving_time'] == 0 and tracked_objects[idx]['vd_center'][-1][1] > self.clicks[0][1] and tracked_objects[idx]['vd_center'][-1][1] > self.clicks[1][1]:
@@ -380,7 +381,7 @@ class SpeedEstimator:
                         speed_in_frames = np.abs(tracked_objects[idx]['entering_time']-tracked_objects[idx]['leaving_time'])
                         speed = (self.dist_in_meters/((1/self.fps)*speed_in_frames))*3.6
                         tracked_objects[idx]['speed'] = speed
-                        cv2.putText(frame, str(int(speed)) + " km/h", (tracked_objects[idx]['vd_bbox_coords'][2],tracked_objects[idx]['vd_bbox_coords'][3]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                        cv2.putText(frame, str(int(speed)) + " km/h", (tracked_objects[idx]['vd_bbox_coords'][2],tracked_objects[idx]['vd_bbox_coords'][3]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2)
         return tracked_objects
 
     def setup_distance(self, event, frame, clicks, cid, fig):
@@ -397,7 +398,6 @@ class SpeedEstimator:
                 dist_in_meters = input("\nHow many meters is this in reality?\n")
                 try:
                     self.dist_in_meters = float(dist_in_meters)
-                    print(type(self.dist_in_meters), self.dist_in_meters)
                     plt.close()
                 except:
                     print("Not a number, stopping the program.")
@@ -410,14 +410,14 @@ class IOHandler:
 
 
     def check_end_stream(self, ret):
-        if cv2.waitKey(1) & 0xFF == ord('q') or not ret:
+        if cv2.waitKey(100) & 0xFF == ord('q') or not ret:
             self.cap.release()
             cv2.destroyAllWindows()
             sys.exit()
 
 
 def main():
-    speed_camera = TrafficSpeedCamera(r"C:\Users\Adam\Desktop\speedcam_samples\06.03\P1010428.MOV", "video", fps = 30)
+    speed_camera = TrafficSpeedCamera(r"C:\Users\Adam\Desktop\speedcam_samples\05.31\P1010001.MOV", "video", fps = 30)
     speed_camera.run(show_tracking = True, distance_setup = True)
 
 
