@@ -26,14 +26,16 @@ class TrafficSpeedCamera:
         self.input_path = input_path
         self.last_frame_time = time.time()
         self.distance_setup_ran = False
+        self.iter = 0
 
-    def process_frame(self, frame, show_tracking):
+    def process_frame(self, frame, show_tracking, distance_setup):
         show_frame = frame.copy()
         vehicle_detections = self.vehicle_detector.detect_vehicles(show_frame)
         tracked_vehicles = self.object_tracker.track_objects(show_frame, vehicle_detections, show_tracking)
         if len(vehicle_detections) != 0:
             license_plates = self.license_plate_detector.detect_license_plates(frame, show_frame, tracked_vehicles)
-        speeds = self.speed_estimator.estimate_speed(show_frame, tracked_vehicles)
+        if distance_setup:
+            speeds = self.speed_estimator.estimate_speed(show_frame, tracked_vehicles, self.iter)
         self.measure_fps(show_frame)
         cv2.imshow("Frame", show_frame)
 
@@ -42,16 +44,18 @@ class TrafficSpeedCamera:
         if self.input_mode == "burst_photos":
             file_names = sorted(os.listdir(self.input_path))
             for file_name in file_names:
+                self.iter += 1
                 image_path = os.path.join(self.input_path, file_name)
                 frame = cv2.imread(image_path)
-                # if not self.distance_setup_ran:
-                #     clicks = []
-                #     fig, ax = plt.subplots(figsize=(16, 9))
-                #     ax.imshow(frame)
-                #     cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame, clicks, cid, fig))
-                #     plt.show()
-                #     self.distance_setup_ran = True
-                self.process_frame(frame, show_tracking)
+                if distance_setup and not self.distance_setup_ran:
+                    clicks = []
+                    fig, ax = plt.subplots(figsize=(16, 9))
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    ax.imshow(frame_rgb)
+                    cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame_rgb, clicks, cid, fig))
+                    plt.show()
+                    self.distance_setup_ran = True
+                self.process_frame(frame, show_tracking, distance_setup)
                 self.io_handler.check_end_stream(ret)
             ret = False
             self.io_handler.check_end_stream(ret)
@@ -59,15 +63,17 @@ class TrafficSpeedCamera:
 
         elif self.input_mode == "video":
             while True:
+                self.iter += 1
                 ret, frame = self.io_handler.cap.read()
-                # if not self.distance_setup_ran:
-                #     clicks = []
-                #     fig, ax = plt.subplots(figsize=(16, 9))
-                #     ax.imshow(frame)
-                #     cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame, clicks, cid, fig))
-                #     plt.show()
-                #     self.distance_setup_ran = True
-                self.process_frame(frame,show_tracking)
+                if distance_setup and not self.distance_setup_ran:
+                    clicks = []
+                    fig, ax = plt.subplots(figsize=(16, 9))
+                    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                    ax.imshow(frame_rgb)
+                    cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame_rgb, clicks, cid, fig))
+                    plt.show()
+                    self.distance_setup_ran = True
+                self.process_frame(frame,show_tracking, distance_setup)
                 self.io_handler.check_end_stream(ret)
 
         else:
@@ -86,7 +92,6 @@ class VehicleDetector:
         self.model_vd = YOLO('./yolov8s.pt')
         # ["bicycle", "car", "motorcycle", "bus", "truck"]
         self.searched_class_indices = [1, 2, 3, 5, 7]
-        self.mask = cv2.imread('mask_half.png')
 
     def detect_vehicles(self, frame):
         print("VEHICLE DETECTION HERE")
@@ -139,6 +144,9 @@ class ObjectTracker:
                     self.vehicle_preds[idx]['tracking_window_opened'] = False
                     self.vehicle_preds[idx]['speed'] = 0
                     self.vehicle_preds[idx]['distance'] = []
+                    self.vehicle_preds[idx]['entering_time'] = 0
+                    self.vehicle_preds[idx]['leaving_time'] = 0
+                    self.vehicle_preds[idx]['direction'] = ""
         
             
             # if conf > self.vehicle_preds[idx]['vd_conf']:
@@ -318,15 +326,17 @@ class SpeedEstimator:
         self.dist_in_meters = 0.0
         self.dist_in_pixels = 0.0
         self.pixel_meter_ratio = 0.0
-        self.time_per_frame = 1/fps
+        self.fps = fps
         self.moving_average_size = 3
         self.focal_length = 45/1000
         self.pixel_diameter = math.sqrt(17.3**2+13**2)/1000
         self.resolution_diameter = math.sqrt(1280**2+720**2)
         self.pixel_pitch = self.pixel_diameter/self.resolution_diameter
         self.car_real_diameter = math.sqrt(1.6**2+1.5**2)
+        self.clicks = []
+        self.dist_in_meters = 0.0
 
-    def estimate_speed_pinhole_model(self, tracked_objects):
+    def measure_distance(self, tracked_objects):
         for idx in tracked_objects.keys():
             if tracked_objects[idx]['tracked']:
                 x1, y1, x2, y2 = [tracked_objects[idx]['vd_bbox_coords'][i] for i in range(4)]
@@ -334,40 +344,64 @@ class SpeedEstimator:
                 # Distance to object = (Actual diameter of the object * Focal length) / diameter of the object in the image
                 distance_in_meter = (self.car_real_diameter*self.focal_length)/(vehicle_diameter_in_pixel*self.pixel_pitch)
                 tracked_objects[idx]['distance'].append(distance_in_meter)
-        
         return tracked_objects
     
-    def estimate_speed(self, frame, tracked_objects_wo_dist):
-        tracked_objects = self.estimate_speed_pinhole_model(tracked_objects_wo_dist)
+    def estimate_speed(self, frame, tracked_objects, iter):
+        # tracked_objects = self.measure_distance(tracked_objects_wo_dist)
+        cv2.line(frame, (frame.shape[1], int(self.clicks[0][1])), (0, int(self.clicks[0][1])), (255,0,255), thickness=2)
+        cv2.line(frame, (frame.shape[1], int(self.clicks[1][1])), (0, int(self.clicks[1][1])), (255,0,255), thickness=2)
         for idx in tracked_objects.keys():
-            if tracked_objects[idx]['tracked']:
-                total = 0.0
-                num_frames = min(self.moving_average_size, len(tracked_objects[idx]['distance']))
-                if num_frames >= 2:
-                    for i in range(num_frames-1):
-                        travelled_distance = np.abs(tracked_objects[idx]['distance'][(-1-i)] - tracked_objects[idx]['distance'][(-2-i)])
-                        total += travelled_distance
-                    speed = (travelled_distance / (self.time_per_frame*(num_frames-1)))*3.6
-                    tracked_objects[idx]['speed'] = speed
-                    print('IDX',idx, 'EST SPEED', tracked_objects[idx]['speed'], "km/h")
-                    cv2.putText(frame, str(int(speed)) + " km/h", (tracked_objects[idx]['vd_bbox_coords'][2],tracked_objects[idx]['vd_bbox_coords'][3]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            if len(tracked_objects[idx]['vd_center']) >= 2:
+                box_diff = tracked_objects[idx]['vd_center'][-2][1] - tracked_objects[idx]['vd_center'][-1][1]
+                if box_diff > 0:
+                    tracked_objects[idx]['direction'] = "up"
+                elif box_diff < 0:
+                    tracked_objects[idx]['direction'] = "down"
+                else:
+                    tracked_objects[idx]['direction'] = "none"
+
+                if tracked_objects[idx]['tracked'] and tracked_objects[idx]['direction'] == "up":
+                    if tracked_objects[idx]['entering_time'] == 0 and tracked_objects[idx]['vd_center'][-1][1] < self.clicks[0][1] and tracked_objects[idx]['vd_center'][-1][1] > self.clicks[1][1]:
+                        tracked_objects[idx]['entering_time'] = iter
+                    if tracked_objects[idx]['leaving_time'] == 0 and tracked_objects[idx]['vd_center'][-1][1] < self.clicks[0][1] and tracked_objects[idx]['vd_center'][-1][1] < self.clicks[1][1]:
+                        tracked_objects[idx]['leaving_time'] = iter
+                    if tracked_objects[idx]['entering_time'] != 0 and tracked_objects[idx]['leaving_time'] != 0:
+                        speed_in_frames = np.abs(tracked_objects[idx]['entering_time']-tracked_objects[idx]['leaving_time'])
+                        speed = (self.dist_in_meters/((1/self.fps)*speed_in_frames))*3.6
+                        tracked_objects[idx]['speed'] = speed
+                        cv2.putText(frame, str(int(speed)) + " km/h", (tracked_objects[idx]['vd_bbox_coords'][2],tracked_objects[idx]['vd_bbox_coords'][3]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                
+                if tracked_objects[idx]['tracked'] and tracked_objects[idx]['direction'] == "down":
+                    if tracked_objects[idx]['leaving_time'] == 0 and tracked_objects[idx]['vd_center'][-1][1] > self.clicks[0][1] and tracked_objects[idx]['vd_center'][-1][1] > self.clicks[1][1]:
+                        tracked_objects[idx]['leaving_time'] = iter
+                    if tracked_objects[idx]['entering_time'] == 0 and tracked_objects[idx]['vd_center'][-1][1] < self.clicks[0][1] and tracked_objects[idx]['vd_center'][-1][1] > self.clicks[1][1]:
+                        tracked_objects[idx]['entering_time'] = iter
+                    if tracked_objects[idx]['entering_time'] != 0 and tracked_objects[idx]['leaving_time'] != 0:
+                        speed_in_frames = np.abs(tracked_objects[idx]['entering_time']-tracked_objects[idx]['leaving_time'])
+                        speed = (self.dist_in_meters/((1/self.fps)*speed_in_frames))*3.6
+                        tracked_objects[idx]['speed'] = speed
+                        cv2.putText(frame, str(int(speed)) + " km/h", (tracked_objects[idx]['vd_bbox_coords'][2],tracked_objects[idx]['vd_bbox_coords'][3]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
         return tracked_objects
 
     def setup_distance(self, event, frame, clicks, cid, fig):
         if event.xdata is not None and event.ydata is not None:
-            clicks.append((event.xdata, event.ydata))
-            if len(clicks) == 2:
-                p1, p2 = clicks
+            self.clicks.append((event.xdata, event.ydata))
+            if len(self.clicks) == 2:
+                print("CLICKS: ", self.clicks)
+                p1, p2 = self.clicks
                 self.dist_in_pixels = np.linalg.norm(np.array(p1) - np.array(p2))
                 fig.canvas.mpl_disconnect(cid)
                 plt.imshow(frame)
-                plt.scatter(*zip(*clicks), color='red', marker='x')
+                plt.scatter(*zip(*self.clicks), color='red', marker='x')
                 plt.show()
-                dist_in_meters = input("\nHow many meters is this in reality?")
-                self.dist_in_meters = float(dist_in_meters)
-                self.pixel_meter_ratio = self.dist_in_pixels/self.dist_in_meters
-                print(f"Pixel per meter conversion ratio is: {self.pixel_meter_ratio}" + " pixels/meter")
-
+                dist_in_meters = input("\nHow many meters is this in reality?\n")
+                try:
+                    self.dist_in_meters = float(dist_in_meters)
+                    print(type(self.dist_in_meters), self.dist_in_meters)
+                    plt.close()
+                except:
+                    print("Not a number, stopping the program.")
+                    sys.exit()
 
 class IOHandler:
     def __init__(self, input_path):
@@ -383,8 +417,8 @@ class IOHandler:
 
 
 def main():
-    speed_camera = TrafficSpeedCamera(r"C:\Users\Adam\Desktop\speedcam_samples\05.31\P1010001.MOV", "video", fps = 30)
-    speed_camera.run(show_tracking = True, distance_setup = False)
+    speed_camera = TrafficSpeedCamera(r"C:\Users\Adam\Desktop\speedcam_samples\06.03\P1010428.MOV", "video", fps = 30)
+    speed_camera.run(show_tracking = True, distance_setup = True)
 
 
 if __name__ == '__main__':
