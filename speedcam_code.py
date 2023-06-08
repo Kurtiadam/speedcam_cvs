@@ -13,14 +13,14 @@ api = tesserocr.PyTessBaseAPI()
 
 
 class TrafficSpeedCamera:
-    def __init__(self, input_path, input_mode):
+    def __init__(self, input_path, input_mode, fps = 6):
         self.io_handler = IOHandler(input_path)
         self.vehicle_detector = VehicleDetector()
         self.oc_recognizer = OCR()
         self.image_enhancer = LPEnhancer()
         self.license_plate_detector = LicensePlateDetector(self.oc_recognizer, self.image_enhancer)
         self.object_tracker = ObjectTracker()
-        self.speed_estimator = SpeedEstimator()
+        self.speed_estimator = SpeedEstimator(fps)
         self.fps_count = 0
         self.input_mode = input_mode
         self.input_path = input_path
@@ -33,7 +33,7 @@ class TrafficSpeedCamera:
         tracked_vehicles = self.object_tracker.track_objects(show_frame, vehicle_detections, show_tracking)
         if len(vehicle_detections) != 0:
             license_plates = self.license_plate_detector.detect_license_plates(frame, show_frame, tracked_vehicles)
-        speeds = self.speed_estimator.estimate_speed(frame, tracked_vehicles)
+        speeds = self.speed_estimator.estimate_speed(show_frame, tracked_vehicles)
         self.measure_fps(show_frame)
         cv2.imshow("Frame", show_frame)
 
@@ -44,13 +44,13 @@ class TrafficSpeedCamera:
             for file_name in file_names:
                 image_path = os.path.join(self.input_path, file_name)
                 frame = cv2.imread(image_path)
-                if not self.distance_setup_ran:
-                    clicks = []
-                    fig, ax = plt.subplots(figsize=(16, 9))
-                    ax.imshow(frame)
-                    cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame, clicks, cid, fig))
-                    plt.show()
-                    self.distance_setup_ran = True
+                # if not self.distance_setup_ran:
+                #     clicks = []
+                #     fig, ax = plt.subplots(figsize=(16, 9))
+                #     ax.imshow(frame)
+                #     cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame, clicks, cid, fig))
+                #     plt.show()
+                #     self.distance_setup_ran = True
                 self.process_frame(frame, show_tracking)
                 self.io_handler.check_end_stream(ret)
             ret = False
@@ -60,15 +60,14 @@ class TrafficSpeedCamera:
         elif self.input_mode == "video":
             while True:
                 ret, frame = self.io_handler.cap.read()
-                if not self.distance_setup_ran:
-                    clicks = []
-                    fig, ax = plt.subplots(figsize=(16, 9))
-                    ax.imshow(frame)
-                    cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame, clicks, cid, fig))
-                    plt.show()
-                    self.distance_setup_ran = True
-                self.process_frame(frame)
-                cv2.imshow("Frame", frame)
+                # if not self.distance_setup_ran:
+                #     clicks = []
+                #     fig, ax = plt.subplots(figsize=(16, 9))
+                #     ax.imshow(frame)
+                #     cid = fig.canvas.mpl_connect('button_press_event', lambda event: self.speed_estimator.setup_distance(event, frame, clicks, cid, fig))
+                #     plt.show()
+                #     self.distance_setup_ran = True
+                self.process_frame(frame,show_tracking)
                 self.io_handler.check_end_stream(ret)
 
         else:
@@ -139,6 +138,7 @@ class ObjectTracker:
                     self.vehicle_preds[idx]['tracked'] = False
                     self.vehicle_preds[idx]['tracking_window_opened'] = False
                     self.vehicle_preds[idx]['speed'] = 0
+                    self.vehicle_preds[idx]['distance'] = []
         
             
             # if conf > self.vehicle_preds[idx]['vd_conf']:
@@ -298,17 +298,8 @@ class LPEnhancer:
 class OCR():
     def __init__(self) -> None:
         self.alphanumeric = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
-        # self.options = "-c tessedit_char_whitelist={}".format(self.alphanumeric)
-        # self.options += " --psm {}".format(7)
     
     def read_license_plate(self, frame):
-        # data = pt.image_to_data(frame, config=self.options, output_type=Output.DICT)
-        # confidences = data['conf']
-        # confidences = [float(c) for c in confidences if c != '-1']
-        # conf = np.mean(confidences) / 100
-        # text = data['text']
-        # text = ' '.join(text).strip()
-
         with tesserocr.PyTessBaseAPI(psm=tesserocr.PSM.SINGLE_LINE) as api:
             api.SetVariable('tessedit_char_whitelist', self.alphanumeric)
             image = Image.fromarray(frame)
@@ -323,28 +314,45 @@ class OCR():
 
 
 class SpeedEstimator:
-    def __init__(self):
-        # (1146x894) bottom left lane piece - (1470,358) upper right lane piece
+    def __init__(self, fps):
         self.dist_in_meters = 0.0
         self.dist_in_pixels = 0.0
         self.pixel_meter_ratio = 0.0
-        self.time_per_frame = 0.18
+        self.time_per_frame = 1/fps
         self.moving_average_size = 3
+        self.focal_length = 45/1000
+        self.pixel_diameter = math.sqrt(17.3**2+13**2)/1000
+        self.resolution_diameter = math.sqrt(1280**2+720**2)
+        self.pixel_pitch = self.pixel_diameter/self.resolution_diameter
+        self.car_real_diameter = math.sqrt(1.6**2+1.5**2)
 
-    def estimate_speed(self, frame, tracked_objects):
+    def estimate_speed_pinhole_model(self, tracked_objects):
         for idx in tracked_objects.keys():
-            total = 0
-            num_frames = min(self.moving_average_size, len(tracked_objects[idx]['vd_center']))
-            if num_frames >= 2:
-                for i in range(num_frames-1):
-                    travelled_distance_pixels = np.linalg.norm(np.array(tracked_objects[idx]['vd_center'][i+1]) - np.array(tracked_objects[idx]['vd_center'][i]))
-                    total += travelled_distance_pixels
-                travelled_distance_meters = total / self.pixel_meter_ratio
-                speed = travelled_distance_meters / (self.time_per_frame*(num_frames-1))
-                tracked_objects[idx]['speed'] = speed*3.6
-            print('IDX',idx, 'EST SPEED', tracked_objects[idx]['speed'], "km/h")
+            if tracked_objects[idx]['tracked']:
+                x1, y1, x2, y2 = [tracked_objects[idx]['vd_bbox_coords'][i] for i in range(4)]
+                vehicle_diameter_in_pixel = math.sqrt((x2-x1)**2 + (y2-y1)**2)
+                # Distance to object = (Actual diameter of the object * Focal length) / diameter of the object in the image
+                distance_in_meter = (self.car_real_diameter*self.focal_length)/(vehicle_diameter_in_pixel*self.pixel_pitch)
+                tracked_objects[idx]['distance'].append(distance_in_meter)
+        
         return tracked_objects
     
+    def estimate_speed(self, frame, tracked_objects_wo_dist):
+        tracked_objects = self.estimate_speed_pinhole_model(tracked_objects_wo_dist)
+        for idx in tracked_objects.keys():
+            if tracked_objects[idx]['tracked']:
+                total = 0.0
+                num_frames = min(self.moving_average_size, len(tracked_objects[idx]['distance']))
+                if num_frames >= 2:
+                    for i in range(num_frames-1):
+                        travelled_distance = np.abs(tracked_objects[idx]['distance'][(-1-i)] - tracked_objects[idx]['distance'][(-2-i)])
+                        total += travelled_distance
+                    speed = (travelled_distance / (self.time_per_frame*(num_frames-1)))*3.6
+                    tracked_objects[idx]['speed'] = speed
+                    print('IDX',idx, 'EST SPEED', tracked_objects[idx]['speed'], "km/h")
+                    cv2.putText(frame, str(int(speed)) + " km/h", (tracked_objects[idx]['vd_bbox_coords'][2],tracked_objects[idx]['vd_bbox_coords'][3]), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        return tracked_objects
+
     def setup_distance(self, event, frame, clicks, cid, fig):
         if event.xdata is not None and event.ydata is not None:
             clicks.append((event.xdata, event.ydata))
@@ -375,8 +383,8 @@ class IOHandler:
 
 
 def main():
-    speed_camera = TrafficSpeedCamera(r"C:\Users\Adam\Desktop\speedcam_samples\06.03\FAST_2", "burst_photos")
-    speed_camera.run(show_tracking = True, distance_setup = True)
+    speed_camera = TrafficSpeedCamera(r"C:\Users\Adam\Desktop\speedcam_samples\05.31\P1010001.MOV", "video", fps = 30)
+    speed_camera.run(show_tracking = True, distance_setup = False)
 
 
 if __name__ == '__main__':
