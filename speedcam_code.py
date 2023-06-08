@@ -183,7 +183,7 @@ class ObjectTracker:
 
 class LicensePlateDetector:
     def __init__(self, oc_recognizer, image_enhancer):
-        self.model_lp = YOLO('./runs/detect/train5/weights/best.pt')
+        self.model_lp = YOLO('./YOLO_license_plate_localization/weights/best.pt')
         self.oc_recognizer = oc_recognizer
         self.image_enhancer = image_enhancer
 
