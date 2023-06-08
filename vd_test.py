@@ -1,10 +1,8 @@
 from ultralytics import YOLO
 import os
-import cv2
 
 model_vd = YOLO('./yolov8s.pt')
-input_path = r"C:\Users\Adam\Desktop\CVS - HW Project.v1i.yolov8\test\images"
-file_names = sorted(os.listdir(input_path))
+input_path = r"C:\Users\Adam\Desktop\Test_Dataset_2023.06.8"
 searched_class_indices = [1, 2, 3, 5, 7]
 # for file_name in file_names:
     # image_path = os.path.join(input_path, file_name)
