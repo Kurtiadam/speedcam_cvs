@@ -2,15 +2,22 @@
 
 This repository is for student work at the Budapest University of Technology and Economics' class of Computer Vision Systems.
 
-![image](https://user-images.githubusercontent.com/98428367/236061458-ab529cda-eae8-443c-b425-d26abd507c57.png)
+![image](https://github.com/Kurtiadam/speedcam_cvs/assets/98428367/51f2c69d-5758-4fde-9175-7b40dd9e4655)
 
 
 Throughout the semester we will develop a speed camera algorithm consisting of the following features:
 - [x] Vehicle detection with YOLO
-- [ ] License plate localization
-- [ ] License plate reading with optical character recognition (OCR)
-- [ ] Vehicle speed measuring using optical flow
+- [x] License plate localization
+- [x] License plate reading with optical character recognition (OCR)
+- [x] Vehicle speed estimation using optical flow
 
 The students working on this project are:
 - Pucsok Sándor (pucsoksandor)
 - Kürti Ádám (Kurtiadam)
+
+## How to use 
+Required libraries and other resources:
+- libraries in requirements.txt
+- tesserocr (download here: https://github.com/sirfz/tesserocr)
+
+Run speedcam_cvs.py.
