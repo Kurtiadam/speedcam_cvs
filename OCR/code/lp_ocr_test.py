@@ -15,8 +15,9 @@ api = tesserocr.PyTessBaseAPI()
 
 def main():
     img_path = r"C:\Users\Adam\Desktop\speedcam_cvs\test_sets\License plate reading"
-    file_names = os.listdir(img_path)
-    df = pd.DataFrame(columns=['Prediction', 'Confidence'])
+    file_names = sorted(os.listdir(img_path))
+    df = pd.DataFrame(columns=['File name','Prediction', 'Confidence'])
+    iter = 0
     for file_name in file_names:
         image_path = os.path.join(img_path, file_name)
         time_bef_crop = time.time()
@@ -81,10 +82,14 @@ def main():
             confidences = [float(c) for c in confidences]
             conf = np.mean(confidences) / 100
             print("TESSEROCR PRED: ", text, "CONF: ", conf)
-            df.loc[len(df)] = [text, conf]
+            df.loc[len(df)] = [file_name ,text, conf]
 
         time_aft_crop = time.time()
         print("TIME tesserocr: ", time_aft_crop-time_bef_crop, " sec\n")
+
+        # image = Image.open(image_path)
+        # image.save('./test_sets/P' + str(iter) + '.png')
+        # iter += 1
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
             cv2.destroyAllWindows()
