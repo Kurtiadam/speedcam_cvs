@@ -161,8 +161,7 @@ cython_debug/
 
 
 # Datasets
-.datasets
-datasets/
+/training_sets
 
 # YOLO original directory
 /yolov5
