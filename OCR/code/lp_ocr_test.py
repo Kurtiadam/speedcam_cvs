@@ -14,7 +14,7 @@ api = tesserocr.PyTessBaseAPI()
 
 
 def main():
-    img_path = r"C:\Users\Adam\Desktop\speedcam_cvs\test_sets\License_plate_reading"
+    img_path = r"C:\Users\Adam\Desktop\speedcam_cvs\test_sets\License plate reading"
     file_names = os.listdir(img_path)
     df = pd.DataFrame(columns=['Prediction', 'Confidence'])
     for file_name in file_names:
