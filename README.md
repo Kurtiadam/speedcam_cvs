@@ -22,3 +22,5 @@ Required libraries and other resources:
 - tesserocr (download here: https://github.com/sirfz/tesserocr)
 
 Run speedcam_cvs.py.
+
+**Please find the exhaustive documentation in the [_documentation_](https://github.com/Kurtiadam/speedcam_cvs/tree/main/documentation) folder.**
