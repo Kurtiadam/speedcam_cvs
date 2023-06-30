@@ -17,6 +17,7 @@ The students working on this project are:
 
 ## How to use 
 Required libraries and other resources:
+- Python (3.8< and <3.11)
 - libraries in requirements.txt
 - tesserocr (download here: https://github.com/sirfz/tesserocr)
 
