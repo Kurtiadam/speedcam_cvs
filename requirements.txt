@@ -43,7 +43,6 @@ sentry-sdk==1.23.1
 shapely==2.0.1
 six==1.16.0
 sympy==1.12
-tesserocr @ file:///C:/Users/Adam/Desktop/tesserocr-2.5.2-cp310-cp310-win_amd64.whl
 tifffile==2023.4.12
 torch==2.0.1+cu118
 torchaudio==2.0.2+cu118
