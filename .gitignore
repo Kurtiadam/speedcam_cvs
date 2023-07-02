@@ -170,3 +170,6 @@ yolov8s.pt
 
 # Long example videos
 /samples/Videok
+
+# VSCODE
+.vscode
