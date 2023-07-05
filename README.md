@@ -21,6 +21,7 @@ Required libraries and other resources:
 - libraries in requirements.txt
 - tesserocr (download here: https://github.com/sirfz/tesserocr)
 
-Run speedcam_cvs.py.
+Run speedcam_cvs.py. 
+In order to make use of the velocity measurement, a region of interest has to be set up which size in real life you have to know: Choose two points on the first frame of the source file in between which points you know the distance by two consecutive mouse clicks. Afterwards, specify this distance in meters in the console and the algorithm will start running.
 
 **Please find the exhaustive documentation in the [_documentation_](https://github.com/Kurtiadam/speedcam_cvs/tree/main/documentation) folder.**
